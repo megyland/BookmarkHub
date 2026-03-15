@@ -20,31 +20,27 @@ export default defineBackground(() => {
       curOperType = OperType.SYNC
       uploadBookmarks().then(async (updatedAt) => {
         if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
-        curOperType = OperType.NONE
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
-      });
+      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE });
     }
     if (msg.name === 'download') {
       curOperType = OperType.SYNC
-      downloadBookmarks().then(async () => {
-        const updatedAt = await BookmarkService.getUpdatedAt();
+      downloadBookmarks().then(async (updatedAt) => {
         if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
-        curOperType = OperType.NONE
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
-      });
+      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE });
     }
     if (msg.name === 'removeAll') {
       curOperType = OperType.REMOVE
       clearBookmarkTree().then(() => {
-        curOperType = OperType.NONE
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
-      });
+      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE });
     }
     if (msg.name === 'setting') {
       browser.runtime.openOptionsPage().then(() => {
@@ -131,19 +127,19 @@ export default defineBackground(() => {
     const setting = await Setting.build();
     if (!setting.autoSync || !setting.githubToken || !setting.gistID || !setting.gistFileName) return;
     try {
-      const updatedAt = await BookmarkService.getUpdatedAt();
-      if (!updatedAt) return;
+      const gistData = await BookmarkService.get();
+      if (!gistData.updatedAt) return;
       const stored = await browser.storage.local.get(['lastRemoteUpdate']);
-      if (stored.lastRemoteUpdate === updatedAt) return;
+      if (stored.lastRemoteUpdate === gistData.updatedAt) return;
       curOperType = OperType.SYNC;
-      await downloadBookmarks(true);
-      await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
+      await downloadBookmarks(true, gistData);
+      await browser.storage.local.set({ lastRemoteUpdate: gistData.updatedAt });
+    } catch (err) {
+      console.error('Auto-sync check failed:', err);
+    } finally {
       curOperType = OperType.NONE;
       browser.action.setBadgeText({ text: "" });
       await refreshLocalCount();
-    } catch (err) {
-      console.error('Auto-sync check failed:', err);
-      curOperType = OperType.NONE;
     }
   }
 
@@ -197,10 +193,10 @@ export default defineBackground(() => {
       return null;
     }
   }
-  async function downloadBookmarks(autoSync = false) {
+  async function downloadBookmarks(autoSync = false, prefetchedGist?: { content: string | null, updatedAt: string | null }): Promise<string | null> {
     const notifTitle = browser.i18n.getMessage(autoSync ? 'autoSyncDownload' : 'downloadBookmarks');
     try {
-      let gist = await BookmarkService.get();
+      const { content: gist, updatedAt } = prefetchedGist ?? await BookmarkService.get();
       let setting = await Setting.build()
       if (gist) {
         let syncdata: SyncDataInfo = JSON.parse(gist);
@@ -213,7 +209,7 @@ export default defineBackground(() => {
               message: `${browser.i18n.getMessage('error')}：Gist File ${setting.gistFileName} is NULL`
             });
           }
-          return;
+          return null;
         }
         await clearBookmarkTree();
         await createBookmarkTree(syncdata.bookmarks);
@@ -227,6 +223,7 @@ export default defineBackground(() => {
             message: browser.i18n.getMessage('success')
           });
         }
+        return updatedAt;
       }
       else {
         await browser.notifications.create({
@@ -235,6 +232,7 @@ export default defineBackground(() => {
           title: notifTitle,
           message: `${browser.i18n.getMessage('error')}：Gist File ${setting.gistFileName} Not Found`
         });
+        return null;
       }
     }
     catch (error: any) {
@@ -245,6 +243,7 @@ export default defineBackground(() => {
         title: notifTitle,
         message: `${browser.i18n.getMessage('error')}：${error.message}`
       });
+      return null;
     }
   }
 
