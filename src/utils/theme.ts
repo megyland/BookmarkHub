@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import optionsStorage from './optionsStorage'
 
-export type ThemeValue = 'system' | 'light' | 'dark'
+export type ThemeValue = 'system' | 'light' | 'dark' | 'black'
 
 export function applyTheme(theme: ThemeValue): (() => void) {
     if (theme === 'system') {
