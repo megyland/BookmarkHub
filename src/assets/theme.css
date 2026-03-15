@@ -1,0 +1,145 @@
+/* ── Light theme (default) ─────────────────────────────────────────────── */
+:root {
+    --bh-bg:           #ffffff;
+    --bh-bg-secondary: #f8f9fa;
+    --bh-text:         #212529;
+    --bh-text-muted:   #6c757d;
+    --bh-border:       #dee2e6;
+    --bh-input-bg:     #ffffff;
+    --bh-input-border: #ced4da;
+    --bh-hover-bg:     #f8f9fa;
+    --bh-link:         #007bff;
+    --bh-badge-bg:     #e9ecef;
+    --bh-badge-text:   #495057;
+    --bh-divider:      #e9ecef;
+    --bh-btn-color:    #6c757d;
+    --bh-btn-border:   #6c757d;
+    --bh-btn-hover-bg: #6c757d;
+    --bh-switch-bg:    #dee2e6;
+}
+
+/* ── Dark theme ─────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+    --bh-bg:           #1e1e2e;
+    --bh-bg-secondary: #2a2a3e;
+    --bh-text:         #cdd6f4;
+    --bh-text-muted:   #9399b2;
+    --bh-border:       #45475a;
+    --bh-input-bg:     #2a2a3e;
+    --bh-input-border: #585b70;
+    --bh-hover-bg:     #2a2a3e;
+    --bh-link:         #89b4fa;
+    --bh-badge-bg:     #313244;
+    --bh-badge-text:   #cdd6f4;
+    --bh-divider:      #45475a;
+    --bh-btn-color:    #9399b2;
+    --bh-btn-border:   #585b70;
+    --bh-btn-hover-bg: #45475a;
+    --bh-switch-bg:    #45475a;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+[data-theme="dark"] body {
+    background-color: var(--bh-bg);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] a {
+    color: var(--bh-link);
+}
+
+[data-theme="dark"] a:hover {
+    color: var(--bh-link);
+    filter: brightness(1.2);
+}
+
+/* ── Popup dropdown ─────────────────────────────────────────────────────── */
+[data-theme="dark"] .dropdown-menu {
+    background-color: var(--bh-bg);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .dropdown-item {
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .dropdown-item:hover,
+[data-theme="dark"] .dropdown-item:focus {
+    background-color: var(--bh-hover-bg);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .dropdown-item.disabled,
+[data-theme="dark"] .dropdown-item:disabled {
+    color: var(--bh-text-muted);
+}
+
+[data-theme="dark"] .dropdown-item-text {
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .dropdown-divider {
+    border-top-color: var(--bh-divider);
+}
+
+[data-theme="dark"] .badge-light {
+    background-color: var(--bh-badge-bg);
+    color: var(--bh-badge-text);
+}
+
+/* ── Options form ───────────────────────────────────────────────────────── */
+[data-theme="dark"] .col-form-label,
+[data-theme="dark"] label {
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .form-control {
+    background-color: var(--bh-input-bg);
+    border-color: var(--bh-input-border);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .form-control:focus {
+    background-color: var(--bh-input-bg);
+    border-color: var(--bh-link);
+    color: var(--bh-text);
+    box-shadow: 0 0 0 0.2rem rgba(137, 180, 250, 0.25);
+}
+
+[data-theme="dark"] .form-control:disabled,
+[data-theme="dark"] .form-control[readonly] {
+    background-color: var(--bh-bg-secondary);
+}
+
+[data-theme="dark"] select.form-control option {
+    background-color: var(--bh-input-bg);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .input-group-text {
+    background-color: var(--bh-bg-secondary);
+    border-color: var(--bh-input-border);
+    color: var(--bh-text);
+}
+
+[data-theme="dark"] .btn-outline-secondary {
+    color: var(--bh-btn-color);
+    border-color: var(--bh-btn-border);
+}
+
+[data-theme="dark"] .btn-outline-secondary:hover {
+    background-color: var(--bh-btn-hover-bg);
+    border-color: var(--bh-btn-border);
+    color: var(--bh-text);
+}
+
+/* Bootstrap 4 custom-switch */
+[data-theme="dark"] .custom-control-label::before {
+    background-color: var(--bh-switch-bg);
+    border-color: var(--bh-input-border);
+}
+
+[data-theme="dark"] .custom-control-input:checked ~ .custom-control-label::before {
+    background-color: var(--bh-link);
+    border-color: var(--bh-link);
+}

@@ -10,6 +10,7 @@ export class SettingBase implements Options {
     githubURL: string = 'https://api.github.com';
     autoSync: boolean = false;
     autoSyncInterval: number = 5;
+    theme: string = 'system';
 }
 export class Setting extends SettingBase {
     private constructor() { super() }
@@ -22,6 +23,7 @@ export class Setting extends SettingBase {
         setting.enableNotify = options.enableNotify;
         setting.autoSync = options.autoSync as boolean;
         setting.autoSyncInterval = options.autoSyncInterval as number;
+        setting.theme = options.theme as string;
         return setting;
     }
 }

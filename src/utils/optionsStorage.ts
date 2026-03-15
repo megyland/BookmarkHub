@@ -10,6 +10,7 @@ export default new OptionsSync({
         githubURL: 'https://api.github.com',
         autoSync: false,
         autoSyncInterval: 5,
+        theme: 'system',
     },
 
     // List of functions that are called when the extension is updated

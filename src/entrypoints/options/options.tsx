@@ -3,9 +3,12 @@ import ReactDOM from 'react-dom/client';
 import { Container, Form, Button, Col, Row, InputGroup } from 'react-bootstrap';
 import { useForm } from "react-hook-form";
 import 'bootstrap/dist/css/bootstrap.min.css';
+import '../../assets/theme.css'
 import './options.css'
 import optionsStorage from '../../utils/optionsStorage'
+import { useTheme, applyTheme, ThemeValue } from '../../utils/theme'
 const Popup: React.FC = () => {
+    useTheme()
     const { register, setValue } = useForm();
     useEffect(() => {
         optionsStorage.syncForm('#formOptions');
@@ -69,6 +72,19 @@ const Popup: React.FC = () => {
                             title="How often to check for remote changes (minutes)"
                             onChange={() => browser.runtime.sendMessage({ name: 'settingChanged' })}
                         />
+                    </Col>
+                </Form.Group>
+                <Form.Group as={Row}>
+                    <Form.Label column="sm" sm={3} lg={2} xs={3}>Theme</Form.Label>
+                    <Col sm={4} lg={3} xs={4}>
+                        <Form.Control as="select" name="theme" ref={register} size="sm"
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                                applyTheme(e.target.value as ThemeValue)
+                            }>
+                            <option value="system">System</option>
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </Form.Control>
                     </Col>
                 </Form.Group>
                 <Form.Group as={Row}>

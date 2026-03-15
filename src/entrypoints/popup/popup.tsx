@@ -8,8 +8,11 @@ import {
     AiOutlineInfoCircle, AiOutlineGithub
 } from 'react-icons/ai'
 import 'bootstrap/dist/css/bootstrap.min.css';
+import '../../assets/theme.css'
 import './popup.css'
+import { useTheme } from '../../utils/theme'
 const Popup: React.FC = () => {
+    useTheme()
     const [count, setCount] = useState({ local: "0", remote: "0" })
     useEffect(() => {
         document.addEventListener('click', (e: MouseEvent) => {
