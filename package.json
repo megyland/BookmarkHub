@@ -21,6 +21,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
     "bootstrap": "^4.6.0",
     "ky": "^1.7.3",
     "lz-string": "^1.5.0",

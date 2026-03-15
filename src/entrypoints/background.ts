@@ -10,10 +10,16 @@ export default defineBackground(() => {
 
   let curOperType = OperType.NONE;
   let curBrowserType = BrowserType.CHROME;
+  let uploadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const AUTO_SYNC_ALARM = 'bookmarkHubAutoSync';
+
+  setupAutoSyncAlarm();
+
   browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.name === 'upload') {
       curOperType = OperType.SYNC
-      uploadBookmarks().then(() => {
+      uploadBookmarks().then(async (updatedAt) => {
+        if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
         curOperType = OperType.NONE
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
@@ -22,13 +28,14 @@ export default defineBackground(() => {
     }
     if (msg.name === 'download') {
       curOperType = OperType.SYNC
-      downloadBookmarks().then(() => {
+      downloadBookmarks().then(async () => {
+        const updatedAt = await BookmarkService.getUpdatedAt();
+        if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
         curOperType = OperType.NONE
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
       });
-
     }
     if (msg.name === 'removeAll') {
       curOperType = OperType.REMOVE
@@ -38,47 +45,110 @@ export default defineBackground(() => {
         refreshLocalCount();
         sendResponse(true);
       });
-
     }
     if (msg.name === 'setting') {
       browser.runtime.openOptionsPage().then(() => {
         sendResponse(true);
       });
     }
+    if (msg.name === 'settingChanged') {
+      setupAutoSyncAlarm().then(() => sendResponse(true));
+    }
     return true;
   });
+
+  browser.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === AUTO_SYNC_ALARM) {
+      await checkAndAutoDownload();
+    }
+  });
+
   browser.bookmarks.onCreated.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-      // console.log("onCreated", id, info)
       browser.action.setBadgeText({ text: "!" });
       browser.action.setBadgeBackgroundColor({ color: "#F00" });
       refreshLocalCount();
+      scheduleAutoUpload();
     }
   });
   browser.bookmarks.onChanged.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-      // console.log("onChanged", id, info)
       browser.action.setBadgeText({ text: "!" });
       browser.action.setBadgeBackgroundColor({ color: "#F00" });
+      scheduleAutoUpload();
     }
   })
   browser.bookmarks.onMoved.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-      // console.log("onMoved", id, info)
       browser.action.setBadgeText({ text: "!" });
       browser.action.setBadgeBackgroundColor({ color: "#F00" });
+      scheduleAutoUpload();
     }
   })
   browser.bookmarks.onRemoved.addListener((id, info) => {
     if (curOperType === OperType.NONE) {
-      // console.log("onRemoved", id, info)
       browser.action.setBadgeText({ text: "!" });
       browser.action.setBadgeBackgroundColor({ color: "#F00" });
       refreshLocalCount();
+      scheduleAutoUpload();
     }
   })
 
-  async function uploadBookmarks() {
+  async function setupAutoSyncAlarm() {
+    const setting = await Setting.build();
+    if (setting.autoSync && setting.githubToken && setting.gistID) {
+      const interval = Number(setting.autoSyncInterval) || 5;
+      browser.alarms.create(AUTO_SYNC_ALARM, { periodInMinutes: interval });
+    } else {
+      browser.alarms.clear(AUTO_SYNC_ALARM);
+    }
+  }
+
+  function scheduleAutoUpload() {
+    if (uploadDebounceTimer) clearTimeout(uploadDebounceTimer);
+    uploadDebounceTimer = setTimeout(async () => {
+      uploadDebounceTimer = null;
+      if (curOperType !== OperType.NONE) return;
+      const setting = await Setting.build();
+      if (!setting.autoSync || !setting.githubToken || !setting.gistID || !setting.gistFileName) return;
+      curOperType = OperType.SYNC;
+      try {
+        const updatedAt = await uploadBookmarks(true);
+        if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
+      } finally {
+        curOperType = OperType.NONE;
+        browser.action.setBadgeText({ text: "" });
+        await refreshLocalCount();
+      }
+    }, 2000);
+  }
+
+  async function checkAndAutoDownload() {
+    if (curOperType !== OperType.NONE) return;
+    // Skip if there are local unsaved changes pending manual review
+    const badgeText = await browser.action.getBadgeText({});
+    if (badgeText === '!') return;
+    const setting = await Setting.build();
+    if (!setting.autoSync || !setting.githubToken || !setting.gistID || !setting.gistFileName) return;
+    try {
+      const updatedAt = await BookmarkService.getUpdatedAt();
+      if (!updatedAt) return;
+      const stored = await browser.storage.local.get(['lastRemoteUpdate']);
+      if (stored.lastRemoteUpdate === updatedAt) return;
+      curOperType = OperType.SYNC;
+      await downloadBookmarks(true);
+      await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
+      curOperType = OperType.NONE;
+      browser.action.setBadgeText({ text: "" });
+      await refreshLocalCount();
+    } catch (err) {
+      console.error('Auto-sync check failed:', err);
+      curOperType = OperType.NONE;
+    }
+  }
+
+  async function uploadBookmarks(autoSync = false): Promise<string | null> {
+    const notifTitle = browser.i18n.getMessage(autoSync ? 'autoSyncUpload' : 'uploadBookmarks');
     try {
       let setting = await Setting.build()
       if (setting.githubToken == '') {
@@ -96,37 +166,39 @@ export default defineBackground(() => {
       syncdata.createDate = Date.now();
       syncdata.bookmarks = formatBookmarks(bookmarks);
       syncdata.browser = navigator.userAgent;
-      await BookmarkService.update({
+      const resp = await BookmarkService.update({
         files: {
           [setting.gistFileName]: {
             content: JSON.stringify(syncdata)
           }
         },
         description: setting.gistFileName
-      });
+      }) as any;
       const count = getBookmarkCount(syncdata.bookmarks);
       await browser.storage.local.set({ remoteCount: count });
       if (setting.enableNotify) {
         await browser.notifications.create({
           type: "basic",
           iconUrl: iconLogo,
-          title: browser.i18n.getMessage('uploadBookmarks'),
+          title: notifTitle,
           message: browser.i18n.getMessage('success')
         });
       }
-
+      return resp?.updated_at || null;
     }
     catch (error: any) {
       console.error(error);
       await browser.notifications.create({
         type: "basic",
         iconUrl: iconLogo,
-        title: browser.i18n.getMessage('uploadBookmarks'),
+        title: notifTitle,
         message: `${browser.i18n.getMessage('error')}：${error.message}`
       });
+      return null;
     }
   }
-  async function downloadBookmarks() {
+  async function downloadBookmarks(autoSync = false) {
+    const notifTitle = browser.i18n.getMessage(autoSync ? 'autoSyncDownload' : 'downloadBookmarks');
     try {
       let gist = await BookmarkService.get();
       let setting = await Setting.build()
@@ -137,7 +209,7 @@ export default defineBackground(() => {
             await browser.notifications.create({
               type: "basic",
               iconUrl: iconLogo,
-              title: browser.i18n.getMessage('downloadBookmarks'),
+              title: notifTitle,
               message: `${browser.i18n.getMessage('error')}：Gist File ${setting.gistFileName} is NULL`
             });
           }
@@ -151,7 +223,7 @@ export default defineBackground(() => {
           await browser.notifications.create({
             type: "basic",
             iconUrl: iconLogo,
-            title: browser.i18n.getMessage('downloadBookmarks'),
+            title: notifTitle,
             message: browser.i18n.getMessage('success')
           });
         }
@@ -160,7 +232,7 @@ export default defineBackground(() => {
         await browser.notifications.create({
           type: "basic",
           iconUrl: iconLogo,
-          title: browser.i18n.getMessage('downloadBookmarks'),
+          title: notifTitle,
           message: `${browser.i18n.getMessage('error')}：Gist File ${setting.gistFileName} Not Found`
         });
       }
@@ -170,7 +242,7 @@ export default defineBackground(() => {
       await browser.notifications.create({
         type: "basic",
         iconUrl: iconLogo,
-        title: browser.i18n.getMessage('downloadBookmarks'),
+        title: notifTitle,
         message: `${browser.i18n.getMessage('error')}：${error.message}`
       });
     }

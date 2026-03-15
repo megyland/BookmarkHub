@@ -50,6 +50,28 @@ const Popup: React.FC = () => {
                     </Col>
                 </Form.Group>
                 <Form.Group as={Row}>
+                    <Form.Label column="sm" sm={3} lg={2} xs={3}>Auto Sync</Form.Label>
+                    <Col sm={9} lg={10} xs={9}>
+                        <Form.Check
+                            id="autoSync"
+                            name="autoSync"
+                            ref={register}
+                            type="switch"
+                            title="Automatically upload on bookmark changes and download when remote changes are detected"
+                            onChange={() => browser.runtime.sendMessage({ name: 'settingChanged' })}
+                        />
+                    </Col>
+                </Form.Group>
+                <Form.Group as={Row}>
+                    <Form.Label column="sm" sm={3} lg={2} xs={3}>Check Interval (min)</Form.Label>
+                    <Col sm={4} lg={3} xs={4}>
+                        <Form.Control name="autoSyncInterval" ref={register} type="number" min="1" size="sm"
+                            title="How often to check for remote changes (minutes)"
+                            onChange={() => browser.runtime.sendMessage({ name: 'settingChanged' })}
+                        />
+                    </Col>
+                </Form.Group>
+                <Form.Group as={Row}>
                     <Form.Label column="sm" sm={3} lg={2} xs={3}></Form.Label>
                     <Col sm={9} lg={10} xs={9}>
                         <a href="https://github.com/dudor/BookmarkHub" target="_blank">{browser.i18n.getMessage('help')}</a>

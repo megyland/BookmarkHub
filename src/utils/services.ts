@@ -25,6 +25,15 @@ class BookmarkService {
         let setting = await Setting.build();
         return http.patch(`gists/${setting.gistID}`, { json: data }).json();
     }
+    async getUpdatedAt(): Promise<string | null> {
+        try {
+            let setting = await Setting.build();
+            let resp = await http.get(`gists/${setting.gistID}`).json() as any;
+            return resp?.updated_at || null;
+        } catch {
+            return null;
+        }
+    }
 }
 
 export default new BookmarkService()
