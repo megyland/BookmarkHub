@@ -13,26 +13,67 @@ export default defineBackground(() => {
   let uploadDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   const AUTO_SYNC_ALARM = 'bookmarkHubAutoSync';
 
+  // ── Icon spinner ──────────────────────────────────────────────────────────
+  let spinInterval: ReturnType<typeof setInterval> | null = null;
+  let spinAngle = 0;
+
+  async function startIconSpin(color: string) {
+    if (spinInterval) return;
+    const [bm16, bm32] = await Promise.all([
+      fetch(browser.runtime.getURL('icons/16.png')).then(r => r.blob()).then(createImageBitmap),
+      fetch(browser.runtime.getURL('icons/32.png')).then(r => r.blob()).then(createImageBitmap),
+    ]);
+    spinAngle = 0;
+    function frame(size: number, bm: ImageBitmap): ImageData {
+      const canvas = new OffscreenCanvas(size, size);
+      const ctx = canvas.getContext('2d')!;
+      const c = size / 2;
+      const r = size * 0.5;
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(bm, 0, 0, size, size);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = size * 0.13;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(c, c, r, spinAngle, spinAngle + Math.PI * 1.4);
+      ctx.stroke();
+      return ctx.getImageData(0, 0, size, size);
+    }
+    spinInterval = setInterval(() => {
+      spinAngle += 0.22;
+      browser.action.setIcon({ imageData: { 16: frame(16, bm16), 32: frame(32, bm32) } });
+    }, 50);
+  }
+
+  function stopIconSpin() {
+    if (spinInterval) { clearInterval(spinInterval); spinInterval = null; }
+    spinAngle = 0;
+    browser.action.setIcon({ path: { 16: 'icons/16.png', 32: 'icons/32.png' } });
+  }
+
   setupAutoSyncAlarm();
 
   browser.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg.name === 'upload') {
       curOperType = OperType.SYNC
+      startIconSpin('#22c55e');
       uploadBookmarks().then(async (updatedAt) => {
         if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
-      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE });
+      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE; stopIconSpin(); });
     }
     if (msg.name === 'download') {
       curOperType = OperType.SYNC
+      startIconSpin('#3b82f6');
       downloadBookmarks().then(async (updatedAt) => {
         if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
         browser.action.setBadgeText({ text: "" });
         refreshLocalCount();
         sendResponse(true);
-      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE });
+      }).catch(() => sendResponse(false)).finally(() => { curOperType = OperType.NONE; stopIconSpin(); });
     }
     if (msg.name === 'removeAll') {
       curOperType = OperType.REMOVE
@@ -108,11 +149,13 @@ export default defineBackground(() => {
       const setting = await Setting.build();
       if (!setting.autoSync || !setting.githubToken || !setting.gistID || !setting.gistFileName) return;
       curOperType = OperType.SYNC;
+      startIconSpin('#22c55e');
       try {
         const updatedAt = await uploadBookmarks(true);
         if (updatedAt) await browser.storage.local.set({ lastRemoteUpdate: updatedAt });
       } finally {
         curOperType = OperType.NONE;
+        stopIconSpin();
         browser.action.setBadgeText({ text: "" });
         await refreshLocalCount();
       }
@@ -132,12 +175,14 @@ export default defineBackground(() => {
       const stored = await browser.storage.local.get(['lastRemoteUpdate']);
       if (stored.lastRemoteUpdate === gistData.updatedAt) return;
       curOperType = OperType.SYNC;
+      startIconSpin('#3b82f6');
       await downloadBookmarks(true, gistData);
       await browser.storage.local.set({ lastRemoteUpdate: gistData.updatedAt });
     } catch (err) {
       console.error('Auto-sync check failed:', err);
     } finally {
       curOperType = OperType.NONE;
+      stopIconSpin();
       browser.action.setBadgeText({ text: "" });
       await refreshLocalCount();
     }

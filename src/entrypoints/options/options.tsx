@@ -33,7 +33,7 @@ const DEFAULTS: Options = {
 }
 
 async function saveOptions(next: Options) {
-  await browser.storage.sync.set({ options_sync: next })
+  await optionsStorage.set(next)
 }
 
 const OptionsPage: React.FC = () => {
@@ -155,7 +155,7 @@ const OptionsPage: React.FC = () => {
         <Separator />
 
         {/* Theme */}
-        <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
           <Label>Theme</Label>
           <ButtonGroup
             value={opts.theme}
@@ -168,6 +168,7 @@ const OptionsPage: React.FC = () => {
             ]}
           />
         </div>
+
 
         <Separator />
 
