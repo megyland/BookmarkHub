@@ -15,6 +15,11 @@ import { GithubIcon } from '../../components/ui/github'
 import { ArrowUpRightIcon, type ArrowUpRightIconHandle } from '../../components/ui/arrow-up-right'
 import { Separator } from '../../components/ui/separator'
 import { Button } from '../../components/ui/button'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '../../components/ui/alert-dialog'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
@@ -109,14 +114,16 @@ const Popup: React.FC = () => {
   const [opts, setOpts] = useState<Options>(DEFAULTS)
   const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
+  const refreshCount = () => {
     browser.storage.local.get(['localCount', 'remoteCount']).then(data => {
       setCount({
         local: data['localCount'] ?? '–',
         remote: data['remoteCount'] ?? '–',
       })
     })
-  }, [])
+  }
+
+  useEffect(() => { refreshCount() }, [])
 
   useEffect(() => {
     optionsStorage.getAll().then(saved => {
@@ -137,7 +144,7 @@ const Popup: React.FC = () => {
         if (ok) toast.success(ACTION_LABELS[name])
         else toast.error('Something went wrong')
       })
-      .finally(() => setLoading(null))
+      .finally(() => { setLoading(null); refreshCount() })
   }
 
   const set = <K extends keyof Options>(key: K, value: Options[K], msg?: string) => {
@@ -157,6 +164,7 @@ const Popup: React.FC = () => {
 
   const settingsIconRef = useRef<AnimatedIconHandle>(null)
   const arrowIconRef = useRef<AnimatedIconHandle>(null)
+  const removeAllIconRef = useRef<AnimatedIconHandle>(null)
   const goToSettingsIconRef = useRef<AnimatedIconHandle>(null)
   const githubIconRef = useRef<AnimatedIconHandle>(null)
   const tokenLinkIconRef = useRef<ArrowUpRightIconHandle>(null)
@@ -339,9 +347,41 @@ const Popup: React.FC = () => {
       <Separator />
 
       {/* Danger zone */}
-      <div className="flex flex-col py-1">
-        <MenuButton label={browser.i18n.getMessage('removeAllBookmarks')} icon={<DeleteIcon size={16} className="shrink-0" />} action="removeAll" destructive loading={loading} onAction={send} />
-      </div>
+      <AlertDialog>
+        <div className="flex flex-col py-1">
+          <AlertDialogTrigger asChild>
+            <button
+              disabled={!!loading}
+              onMouseEnter={() => removeAllIconRef.current?.startAnimation()}
+              onMouseLeave={() => removeAllIconRef.current?.stopAnimation()}
+              title={browser.i18n.getMessage('removeAllBookmarksDesc') || undefined}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-40 text-destructive hover:bg-accent"
+            >
+              {loading === 'removeAll'
+                ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                : <DeleteIcon ref={removeAllIconRef} size={16} className="shrink-0" />}
+              {browser.i18n.getMessage('removeAllBookmarks')}
+            </button>
+          </AlertDialogTrigger>
+        </div>
+        <AlertDialogContent className="max-w-xs">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove all bookmarks?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete all local bookmarks. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => send('removeAll')}
+            >
+              Remove all
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Separator />
 
