@@ -91,6 +91,36 @@ export default defineBackground(() => {
     if (msg.name === 'settingChanged') {
       setupAutoSyncAlarm().then(() => sendResponse(true));
     }
+    if (msg.name === 'exportBookmarks') {
+      getBookmarks().then(bookmarks => {
+        const syncdata = new SyncDataInfo();
+        syncdata.version = browser.runtime.getManifest().version;
+        syncdata.createDate = Date.now();
+        syncdata.bookmarks = formatBookmarks(bookmarks);
+        syncdata.browser = navigator.userAgent;
+        sendResponse({ ok: true, data: JSON.stringify(syncdata, null, 2) });
+      }).catch((err: any) => sendResponse({ ok: false, error: err.message }));
+    }
+    if (msg.name === 'importBookmarks') {
+      (async () => {
+        try {
+          const syncdata: SyncDataInfo = JSON.parse(msg.data);
+          if (!syncdata.bookmarks || syncdata.bookmarks.length === 0) {
+            sendResponse({ ok: false, error: 'No bookmarks found in file' });
+            return;
+          }
+          curOperType = OperType.SYNC;
+          await clearBookmarkTree();
+          await createBookmarkTree(syncdata.bookmarks);
+          await refreshLocalCount();
+          sendResponse({ ok: true });
+        } catch (err: any) {
+          sendResponse({ ok: false, error: err.message });
+        } finally {
+          curOperType = OperType.NONE;
+        }
+      })();
+    }
     return true;
   });
 

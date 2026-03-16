@@ -13,6 +13,8 @@ import { ArrowLeftIcon } from '../../components/ui/arrow-left-icon'
 import { BookmarkIcon } from '../../components/ui/bookmark-icon'
 import { GithubIcon } from '../../components/ui/github'
 import { ArrowUpRightIcon, type ArrowUpRightIconHandle } from '../../components/ui/arrow-up-right'
+import { DownloadIcon, type DownloadIconHandle } from '../../components/ui/download'
+import { UploadIcon, type UploadIconHandle } from '../../components/ui/upload'
 import { Separator } from '../../components/ui/separator'
 import { Button } from '../../components/ui/button'
 import {
@@ -165,6 +167,50 @@ const Popup: React.FC = () => {
   const settingsIconRef = useRef<AnimatedIconHandle>(null)
   const arrowIconRef = useRef<AnimatedIconHandle>(null)
   const removeAllIconRef = useRef<AnimatedIconHandle>(null)
+  const exportIconRef = useRef<DownloadIconHandle>(null)
+  const importIconRef = useRef<UploadIconHandle>(null)
+  const importFileRef = useRef<HTMLInputElement>(null)
+  const [fileLoading, setFileLoading] = useState<'export' | 'import' | null>(null)
+
+  const handleExport = async () => {
+    setFileLoading('export')
+    try {
+      const res: { ok: boolean; data?: string; error?: string } =
+        await browser.runtime.sendMessage({ name: 'exportBookmarks' })
+      if (!res.ok) throw new Error(res.error)
+      const blob = new Blob([res.data!], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `bookmarks-${new Date().toISOString().slice(0, 10)}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('Bookmarks exported')
+    } catch (err: any) {
+      toast.error(`Export failed: ${err.message}`)
+    } finally {
+      setFileLoading(null)
+    }
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setFileLoading('import')
+    try {
+      const text = await file.text()
+      const res: { ok: boolean; error?: string } =
+        await browser.runtime.sendMessage({ name: 'importBookmarks', data: text })
+      if (!res.ok) throw new Error(res.error)
+      refreshCount()
+      toast.success('Bookmarks imported')
+    } catch (err: any) {
+      toast.error(`Import failed: ${err.message}`)
+    } finally {
+      setFileLoading(null)
+    }
+  }
   const goToSettingsIconRef = useRef<AnimatedIconHandle>(null)
   const githubIconRef = useRef<AnimatedIconHandle>(null)
   const tokenLinkIconRef = useRef<ArrowUpRightIconHandle>(null)
@@ -346,6 +392,54 @@ const Popup: React.FC = () => {
 
       <Separator />
 
+      {/* File import / export */}
+      <div className="flex flex-col py-1">
+        <input ref={importFileRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
+        <button
+          onClick={handleExport}
+          disabled={!!fileLoading}
+          onMouseEnter={() => exportIconRef.current?.startAnimation()}
+          onMouseLeave={() => exportIconRef.current?.stopAnimation()}
+          className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-40 hover:bg-accent hover:text-accent-foreground"
+        >
+          {fileLoading === 'export'
+            ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            : <DownloadIcon ref={exportIconRef} size={16} className="shrink-0" />}
+          Export to file
+        </button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <button
+              disabled={!!fileLoading}
+              onMouseEnter={() => importIconRef.current?.startAnimation()}
+              onMouseLeave={() => importIconRef.current?.stopAnimation()}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors disabled:opacity-40 hover:bg-accent hover:text-accent-foreground"
+            >
+              {fileLoading === 'import'
+                ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                : <UploadIcon ref={importIconRef} size={16} className="shrink-0" />}
+              Import from file
+            </button>
+          </AlertDialogTrigger>
+          <AlertDialogContent className="w-[calc(100vw-2rem)] p-4">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Import bookmarks?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will replace all your current bookmarks with the contents of the file.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={() => importFileRef.current?.click()}>
+                Choose file
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
+      <Separator />
+
       {/* Danger zone */}
       <AlertDialog>
         <div className="flex flex-col py-1">
@@ -364,7 +458,7 @@ const Popup: React.FC = () => {
             </button>
           </AlertDialogTrigger>
         </div>
-        <AlertDialogContent className="max-w-xs">
+        <AlertDialogContent className="w-[calc(100vw-2rem)] p-4">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove all bookmarks?</AlertDialogTitle>
             <AlertDialogDescription>
