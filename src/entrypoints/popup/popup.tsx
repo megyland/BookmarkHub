@@ -1,15 +1,25 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom/client'
+import { toast } from 'sonner'
+import { Toaster } from '../../components/ui/sonner'
 import {
-  CloudUpload, CloudDownload, Trash2, Settings, ArrowLeft, ExternalLink,
-  HardDrive, Cloud, Github, Loader2, Bookmark,
+  HardDrive, Cloud, Loader2,
 } from 'lucide-react'
+import { CloudUploadIcon } from '../../components/ui/cloud-upload-icon'
+import { CloudDownloadIcon } from '../../components/ui/cloud-download-icon'
+import { DeleteIcon } from '../../components/ui/delete'
+import { SettingsIcon } from '../../components/ui/settings-icon'
+import { ArrowLeftIcon } from '../../components/ui/arrow-left-icon'
+import { BookmarkIcon } from '../../components/ui/bookmark-icon'
+import { GithubIcon } from '../../components/ui/github'
+import { ArrowUpRightIcon, type ArrowUpRightIconHandle } from '../../components/ui/arrow-up-right'
 import { Separator } from '../../components/ui/separator'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
 import { ButtonGroup } from '../../components/ui/button-group'
+import { Slider } from '../../components/ui/slider'
 import { useTheme, applyTheme, ThemeValue } from '../../utils/theme'
 import optionsStorage from '../../utils/optionsStorage'
 import '../../assets/globals.css'
@@ -37,60 +47,37 @@ const DEFAULTS: Options = {
   theme: 'system',
 }
 
+const SYNC_INTERVALS = [5, 10, 15, 30, 60]
+
 async function saveOptions(next: Options) {
   await optionsStorage.set(next)
 }
 
-const Popup: React.FC = () => {
-  useTheme()
-  const [view, setView] = useState<'main' | 'settings'>('main')
-  const [count, setCount] = useState({ local: '–', remote: '–' })
-  const [loading, setLoading] = useState<Action>(null)
-  const [opts, setOpts] = useState<Options>(DEFAULTS)
+interface AnimatedIconHandle {
+  startAnimation: () => void
+  stopAnimation: () => void
+}
 
-  useEffect(() => {
-    browser.storage.local.get(['localCount', 'remoteCount']).then(data => {
-      setCount({
-        local: data['localCount'] ?? '–',
-        remote: data['remoteCount'] ?? '–',
-      })
-    })
-  }, [])
+interface MenuButtonProps {
+  label: string
+  icon: React.ReactElement
+  action: Action
+  destructive?: boolean
+  loading: Action
+  onAction: (action: Action) => void
+}
 
-  useEffect(() => {
-    if (view === 'settings') {
-      optionsStorage.getAll().then(saved => {
-        setOpts({ ...DEFAULTS, ...(saved as Partial<Options>) })
-      })
-    }
-  }, [view])
-
-  const send = (name: Action) => {
-    if (loading || !name) return
-    setLoading(name)
-    browser.runtime.sendMessage({ name }).finally(() => setLoading(null))
-  }
-
-  const set = <K extends keyof Options>(key: K, value: Options[K]) => {
-    const next = { ...opts, [key]: value }
-    setOpts(next)
-    saveOptions(next)
-  }
-
-  const setSyncSetting = <K extends keyof Options>(key: K, value: Options[K]) => {
-    set(key, value)
-    browser.runtime.sendMessage({ name: 'settingChanged' })
-  }
-
-  const menuBtn = (
-    label: string,
-    icon: React.ReactNode,
-    action: Action,
-    destructive = false
-  ) => (
+const MenuButton: React.FC<MenuButtonProps> = ({
+  label, icon, action, destructive = false, loading, onAction,
+}) => {
+  const iconRef = useRef<AnimatedIconHandle>(null)
+  const clonedIcon = React.cloneElement(icon, { ref: iconRef })
+  return (
     <button
-      onClick={() => send(action)}
+      onClick={() => onAction(action)}
       disabled={!!loading}
+      onMouseEnter={() => iconRef.current?.startAnimation()}
+      onMouseLeave={() => iconRef.current?.stopAnimation()}
       title={browser.i18n.getMessage(`${action}BookmarksDesc`) || undefined}
       className={[
         'flex w-full items-center gap-3 px-4 py-2.5 text-sm transition-colors',
@@ -102,21 +89,91 @@ const Popup: React.FC = () => {
     >
       {loading === action
         ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-        : <span className="h-4 w-4 shrink-0">{icon}</span>}
+        : clonedIcon}
       {label}
     </button>
   )
+}
+
+const ACTION_LABELS: Record<NonNullable<Action>, string> = {
+  upload: 'Bookmarks uploaded',
+  download: 'Bookmarks downloaded',
+  removeAll: 'All bookmarks removed',
+}
+
+const Popup: React.FC = () => {
+  useTheme()
+  const [view, setView] = useState<'main' | 'settings'>('main')
+  const [count, setCount] = useState({ local: '–', remote: '–' })
+  const [loading, setLoading] = useState<Action>(null)
+  const [opts, setOpts] = useState<Options>(DEFAULTS)
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    browser.storage.local.get(['localCount', 'remoteCount']).then(data => {
+      setCount({
+        local: data['localCount'] ?? '–',
+        remote: data['remoteCount'] ?? '–',
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    optionsStorage.getAll().then(saved => {
+      setOpts({ ...DEFAULTS, ...(saved as Partial<Options>) })
+    })
+  }, [])
+
+  const debouncedSaveToast = () => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current)
+    saveToastTimer.current = setTimeout(() => toast.success('Settings saved'), 800)
+  }
+
+  const send = (name: Action) => {
+    if (loading || !name) return
+    setLoading(name)
+    browser.runtime.sendMessage({ name })
+      .then(ok => {
+        if (ok) toast.success(ACTION_LABELS[name])
+        else toast.error('Something went wrong')
+      })
+      .finally(() => setLoading(null))
+  }
+
+  const set = <K extends keyof Options>(key: K, value: Options[K], msg?: string) => {
+    const next = { ...opts, [key]: value }
+    setOpts(next)
+    saveOptions(next)
+    if (msg !== undefined) toast.success(msg)
+    else debouncedSaveToast()
+  }
+
+  const setSyncSetting = <K extends keyof Options>(key: K, value: Options[K], msg?: string) => {
+    set(key, value, msg)
+    browser.runtime.sendMessage({ name: 'settingChanged' })
+  }
+
+  const isGistConfigured = !!(opts.githubToken.trim() && opts.gistID.trim())
+
+  const settingsIconRef = useRef<AnimatedIconHandle>(null)
+  const arrowIconRef = useRef<AnimatedIconHandle>(null)
+  const goToSettingsIconRef = useRef<AnimatedIconHandle>(null)
+  const githubIconRef = useRef<AnimatedIconHandle>(null)
+  const tokenLinkIconRef = useRef<ArrowUpRightIconHandle>(null)
 
   if (view === 'settings') {
     return (
       <div className="flex flex-col bg-background text-foreground">
+        <Toaster position="top-center" duration={2000} />
         {/* Settings header */}
         <div className="flex items-center gap-2 px-3 py-2.5">
           <button
             onClick={() => setView('main')}
+            onMouseEnter={() => arrowIconRef.current?.startAnimation()}
+            onMouseLeave={() => arrowIconRef.current?.stopAnimation()}
             className="flex items-center justify-center rounded p-1 hover:bg-accent transition-colors"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeftIcon ref={arrowIconRef} size={16} />
           </button>
           <span className="text-sm font-semibold">Settings</span>
         </div>
@@ -137,8 +194,14 @@ const Popup: React.FC = () => {
                 className="flex-1 h-7 text-xs"
               />
               <Button variant="outline" size="sm" asChild className="h-7 px-2">
-                <a href="https://github.com/settings/tokens/new" target="_blank" className="flex items-center gap-1">
-                  <ExternalLink className="h-3 w-3" />
+                <a
+                  href="https://github.com/settings/tokens/new"
+                  target="_blank"
+                  className="flex items-center gap-1"
+                  onMouseEnter={() => tokenLinkIconRef.current?.startAnimation()}
+                  onMouseLeave={() => tokenLinkIconRef.current?.stopAnimation()}
+                >
+                  <ArrowUpRightIcon ref={tokenLinkIconRef} size={12} />
                 </a>
               </Button>
             </div>
@@ -177,30 +240,41 @@ const Popup: React.FC = () => {
             <Label className="text-xs">{browser.i18n.getMessage('enableNotifications')}</Label>
             <Switch
               checked={opts.enableNotify}
-              onCheckedChange={v => set('enableNotify', v)}
+              onCheckedChange={v => set('enableNotify', v, v ? 'Notifications enabled' : 'Notifications disabled')}
             />
           </div>
 
           {/* Auto Sync */}
           <div className="flex items-center justify-between">
-            <Label className="text-xs">Auto Sync</Label>
+            <div className="space-y-0.5">
+              <Label className={`text-xs${!isGistConfigured ? ' text-muted-foreground' : ''}`}>Auto Sync</Label>
+              {!isGistConfigured && (
+                <p className="text-xs text-muted-foreground">Set token &amp; Gist ID first</p>
+              )}
+            </div>
             <Switch
               checked={opts.autoSync}
-              onCheckedChange={v => setSyncSetting('autoSync', v)}
+              disabled={!isGistConfigured}
+              onCheckedChange={v => setSyncSetting('autoSync', v, v ? 'Auto sync enabled' : 'Auto sync disabled')}
             />
           </div>
 
           {opts.autoSync && (
-            <div className="flex items-center justify-between">
-              <Label htmlFor="autoSyncInterval" className="text-xs">Interval (min)</Label>
-              <Input
-                id="autoSyncInterval"
-                type="number"
-                min="1"
-                value={opts.autoSyncInterval}
-                onChange={e => setSyncSetting('autoSyncInterval', Number(e.target.value) || 5)}
-                className="w-16 h-7 text-xs"
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Check interval</Label>
+                <span className="text-xs font-semibold tabular-nums">{opts.autoSyncInterval} min</span>
+              </div>
+              <Slider
+                min={0}
+                max={SYNC_INTERVALS.length - 1}
+                step={1}
+                value={[Math.max(0, SYNC_INTERVALS.indexOf(opts.autoSyncInterval))]}
+                onValueChange={([i]) => setSyncSetting('autoSyncInterval', SYNC_INTERVALS[i], `Sync interval set to ${SYNC_INTERVALS[i]} min`)}
               />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                {SYNC_INTERVALS.map(v => <span key={v}>{v}m</span>)}
+              </div>
             </div>
           )}
         </div>
@@ -212,7 +286,7 @@ const Popup: React.FC = () => {
           <Label className="text-xs">Theme</Label>
           <ButtonGroup
             value={opts.theme}
-            onChange={v => { set('theme', v); applyTheme(v) }}
+            onChange={v => { set('theme', v, `Theme set to ${v}`); applyTheme(v) }}
             options={[
               { value: 'system', label: 'System' },
               { value: 'light',  label: 'Light'  },
@@ -228,19 +302,45 @@ const Popup: React.FC = () => {
 
   return (
     <div className="flex flex-col bg-background text-foreground">
+      <Toaster position="top-center" duration={2000} />
       {/* Header */}
       <div className="flex items-center gap-2.5 px-4 py-3">
-        <Bookmark className="h-4 w-4 text-primary" />
+        <BookmarkIcon size={16} className="text-primary" />
         <span className="text-sm font-semibold tracking-tight">BookmarkHub</span>
       </div>
 
       <Separator />
 
       {/* Actions */}
+      {!isGistConfigured ? (
+        <div className="flex flex-col gap-2 px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            Configure your GitHub token and Gist ID to upload or download bookmarks.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setView('settings')}
+            onMouseEnter={() => goToSettingsIconRef.current?.startAnimation()}
+            onMouseLeave={() => goToSettingsIconRef.current?.stopAnimation()}
+            className="w-full h-7 text-xs gap-1.5"
+          >
+            <SettingsIcon ref={goToSettingsIconRef} size={12} />
+            Go to Settings
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col py-1">
+          <MenuButton label={browser.i18n.getMessage('uploadBookmarks')}   icon={<CloudUploadIcon size={16} className="shrink-0" />}   action="upload"    loading={loading} onAction={send} />
+          <MenuButton label={browser.i18n.getMessage('downloadBookmarks')} icon={<CloudDownloadIcon size={16} className="shrink-0" />} action="download"  loading={loading} onAction={send} />
+        </div>
+      )}
+
+      <Separator />
+
+      {/* Danger zone */}
       <div className="flex flex-col py-1">
-        {menuBtn(browser.i18n.getMessage('uploadBookmarks'),    <CloudUpload className="h-4 w-4" />,   'upload')}
-        {menuBtn(browser.i18n.getMessage('downloadBookmarks'),  <CloudDownload className="h-4 w-4" />, 'download')}
-        {menuBtn(browser.i18n.getMessage('removeAllBookmarks'), <Trash2 className="h-4 w-4" />,        'removeAll', true)}
+        <MenuButton label={browser.i18n.getMessage('removeAllBookmarks')} icon={<DeleteIcon size={16} className="shrink-0" />} action="removeAll" destructive loading={loading} onAction={send} />
       </div>
 
       <Separator />
@@ -249,9 +349,11 @@ const Popup: React.FC = () => {
       <div className="py-1">
         <button
           onClick={() => setView('settings')}
+          onMouseEnter={() => settingsIconRef.current?.startAnimation()}
+          onMouseLeave={() => settingsIconRef.current?.stopAnimation()}
           className="flex w-full items-center gap-3 px-4 py-2.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
         >
-          <Settings className="h-4 w-4 shrink-0" />
+          <SettingsIcon ref={settingsIconRef} size={16} className="shrink-0" />
           {browser.i18n.getMessage('settings')}
         </button>
       </div>
@@ -274,8 +376,10 @@ const Popup: React.FC = () => {
           target="_blank"
           title={browser.i18n.getMessage('help')}
           className="hover:text-foreground transition-colors"
+          onMouseEnter={() => githubIconRef.current?.startAnimation()}
+          onMouseLeave={() => githubIconRef.current?.stopAnimation()}
         >
-          <Github className="h-3.5 w-3.5" />
+          <GithubIcon ref={githubIconRef} size={14} />
         </a>
       </div>
     </div>

@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom/client'
-import { ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
+import { ArrowUpRightIcon, type ArrowUpRightIconHandle } from '../../components/ui/arrow-up-right'
+import { Toaster } from '../../components/ui/sonner'
 import { Button } from '../../components/ui/button'
+import { Slider } from '../../components/ui/slider'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Switch } from '../../components/ui/switch'
@@ -32,6 +35,8 @@ const DEFAULTS: Options = {
   theme: 'system',
 }
 
+const SYNC_INTERVALS = [5, 10, 15, 30, 60]
+
 async function saveOptions(next: Options) {
   await optionsStorage.set(next)
 }
@@ -39,6 +44,7 @@ async function saveOptions(next: Options) {
 const OptionsPage: React.FC = () => {
   useTheme()
   const [opts, setOpts] = useState<Options>(DEFAULTS)
+  const saveToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     optionsStorage.getAll().then(saved => {
@@ -46,19 +52,30 @@ const OptionsPage: React.FC = () => {
     })
   }, [])
 
-  const set = <K extends keyof Options>(key: K, value: Options[K]) => {
+  const debouncedSaveToast = () => {
+    if (saveToastTimer.current) clearTimeout(saveToastTimer.current)
+    saveToastTimer.current = setTimeout(() => toast.success('Settings saved'), 800)
+  }
+
+  const set = <K extends keyof Options>(key: K, value: Options[K], msg?: string) => {
     const next = { ...opts, [key]: value }
     setOpts(next)
     saveOptions(next)
+    if (msg !== undefined) toast.success(msg)
+    else debouncedSaveToast()
   }
 
-  const setSyncSetting = <K extends keyof Options>(key: K, value: Options[K]) => {
-    set(key, value)
+  const setSyncSetting = <K extends keyof Options>(key: K, value: Options[K], msg?: string) => {
+    set(key, value, msg)
     browser.runtime.sendMessage({ name: 'settingChanged' })
   }
 
+  const isGistConfigured = !!(opts.githubToken.trim() && opts.gistID.trim())
+  const tokenLinkIconRef = useRef<ArrowUpRightIconHandle>(null)
+
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <Toaster position="bottom-right" />
       <div className="max-w-lg mx-auto px-6 py-8 space-y-6">
 
         {/* Header */}
@@ -83,8 +100,14 @@ const OptionsPage: React.FC = () => {
                 className="flex-1"
               />
               <Button variant="outline" size="sm" asChild>
-                <a href="https://github.com/settings/tokens/new" target="_blank" className="flex items-center gap-1.5">
-                  Get Token <ExternalLink className="h-3 w-3" />
+                <a
+                  href="https://github.com/settings/tokens/new"
+                  target="_blank"
+                  className="flex items-center gap-1.5"
+                  onMouseEnter={() => tokenLinkIconRef.current?.startAnimation()}
+                  onMouseLeave={() => tokenLinkIconRef.current?.stopAnimation()}
+                >
+                  Get Token <ArrowUpRightIcon ref={tokenLinkIconRef} size={12} />
                 </a>
               </Button>
             </div>
@@ -122,32 +145,42 @@ const OptionsPage: React.FC = () => {
             </div>
             <Switch
               checked={opts.enableNotify}
-              onCheckedChange={v => set('enableNotify', v)}
+              onCheckedChange={v => set('enableNotify', v, v ? 'Notifications enabled' : 'Notifications disabled')}
             />
           </div>
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label>Auto Sync</Label>
-              <p className="text-xs text-muted-foreground">Upload on change · download when remote changes</p>
+              <Label className={!isGistConfigured ? 'text-muted-foreground' : ''}>Auto Sync</Label>
+              <p className="text-xs text-muted-foreground">
+                {isGistConfigured
+                  ? 'Upload on change · download when remote changes'
+                  : 'Set your GitHub token and Gist ID above to enable'}
+              </p>
             </div>
             <Switch
               checked={opts.autoSync}
-              onCheckedChange={v => setSyncSetting('autoSync', v)}
+              disabled={!isGistConfigured}
+              onCheckedChange={v => setSyncSetting('autoSync', v, v ? 'Auto sync enabled' : 'Auto sync disabled')}
             />
           </div>
 
           {opts.autoSync && (
-            <div className="space-y-1.5">
-              <Label htmlFor="autoSyncInterval">Check interval (minutes)</Label>
-              <Input
-                id="autoSyncInterval"
-                type="number"
-                min="1"
-                value={opts.autoSyncInterval}
-                onChange={e => setSyncSetting('autoSyncInterval', Number(e.target.value) || 5)}
-                className="w-24"
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Check interval</Label>
+                <span className="text-sm font-semibold tabular-nums">{opts.autoSyncInterval} min</span>
+              </div>
+              <Slider
+                min={0}
+                max={SYNC_INTERVALS.length - 1}
+                step={1}
+                value={[Math.max(0, SYNC_INTERVALS.indexOf(opts.autoSyncInterval))]}
+                onValueChange={([i]) => setSyncSetting('autoSyncInterval', SYNC_INTERVALS[i], `Sync interval set to ${SYNC_INTERVALS[i]} min`)}
               />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                {SYNC_INTERVALS.map(v => <span key={v}>{v}m</span>)}
+              </div>
             </div>
           )}
         </div>
@@ -159,7 +192,7 @@ const OptionsPage: React.FC = () => {
           <Label>Theme</Label>
           <ButtonGroup
             value={opts.theme}
-            onChange={v => { set('theme', v); applyTheme(v) }}
+            onChange={v => { set('theme', v, `Theme set to ${v}`); applyTheme(v) }}
             options={[
               { value: 'system', label: 'System' },
               { value: 'light',  label: 'Light'  },
